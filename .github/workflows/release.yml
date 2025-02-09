@@ -1,0 +1,73 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build-info:
+    name: Build info
+    runs-on: ubuntu-latest
+    outputs:
+      target-prefix: ${{ steps.setVariables.outputs.output }}
+    steps:
+      - id: setVariables
+        run: |
+          echo 'output=retlsproxy' >> $GITHUB_OUTPUT
+
+  artifacts:
+    name: Publish target ${{ matrix.target }}
+    needs: [ build-info ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@v3
+
+    - name: Install stable toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+
+    - name: Install dependencies
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: sudo apt-get install musl-tools libssl-dev
+
+    - name: Build artifact
+      run: cargo build --release --target=${{ matrix.target }}
+
+    - name: Compress artifact
+      shell: bash
+      run: |
+        cp "target/${{ matrix.target }}/release/${{ needs.build-info.outputs.target-prefix}}" \
+          "${{ needs.build-info.outputs.target-prefix}}-${{ github.ref_name }}-${{ matrix.target }}"
+        zip "${{ needs.build-info.outputs.target-prefix}}-${{ github.ref_name }}-${{ matrix.target }}.zip" \
+          "${{ needs.build-info.outputs.target-prefix}}-${{ github.ref_name }}-${{ matrix.target }}"
+
+    - name: Upload artifact to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ needs.build-info.outputs.target-prefix}}*.zip
+
+  changelog:
+    name: Changelog
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Make release notes from changelog
+        uses: anton-yurchenko/git-release@v4.2.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

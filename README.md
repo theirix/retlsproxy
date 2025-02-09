@@ -1,6 +1,5 @@
 # retlsproxy
 
-[![Crates.io](https://img.shields.io/crates/v/cloudwatch_metrics_agent.svg)](https://crates.io/crates/cloudwatch_metrics_agent)
 [![Build](https://github.com/theirix/retlsproxy/actions/workflows/build.yml/badge.svg)](https://github.com/theirix/retlsproxy/actions/workflows/build.yml)
 
 An HTTP proxy to tweak TLS capabilities.
