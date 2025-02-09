@@ -1,5 +1,4 @@
 use axum::{body::Body, extract::Request, response::IntoResponse, response::Response};
-use reqwest;
 use url::Url;
 
 use http::uri::Authority;
@@ -30,7 +29,7 @@ struct Opt {
 
     /// Trace requests
     #[structopt(long)]
-    trace: bool
+    trace: bool,
 }
 
 /// Proxy to a TLS service with reduced capabilities
@@ -48,7 +47,7 @@ impl Proxy {
     pub fn new(
         target: String,
         user_agent: Option<String>,
-        trace: bool
+        trace: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Compose target host
         let target_host = Self::get_target_host(&target)?;
@@ -84,12 +83,12 @@ impl Proxy {
     }
 
     /// Get target host without scheme
-    fn get_target_host(target: &String) -> Result<String, Box<dyn std::error::Error>> {
+    fn get_target_host(target: &str) -> Result<String, Box<dyn std::error::Error>> {
         let target_uri =
-            Url::parse(&target).or_else(|err| Err(format!("Cannot parse target host: {}", err)))?;
+            Url::parse(target).map_err(|err| format!("Cannot parse target host: {}", err))?;
         let target_host = target_uri
             .host_str()
-            .ok_or_else(|| "Cannot parse target host: {}")?;
+            .ok_or("Cannot parse target host: {}")?;
         Ok(target_host.into())
     }
 
@@ -99,7 +98,7 @@ impl Proxy {
             .authority(self.target_authority.clone())
             .path_and_query(source_uri.to_string())
             .build()
-            .or_else(|err| Err(format!("Cannot build target url: {}", err)))?;
+            .map_err(|err| format!("Cannot build target url: {}", err))?;
         Ok(target_uri)
     }
 
@@ -136,7 +135,7 @@ impl Proxy {
             Err(err) => {
                 // Serve 404 on any error
                 tracing::error!(err);
-                return Ok((StatusCode::BAD_REQUEST, "Error serving request").into_response());
+                Ok((StatusCode::BAD_REQUEST, "Error serving request").into_response())
             }
         }
     }
@@ -147,12 +146,11 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::builder()
-            .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
-            .from_env_lossy()
+                .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+                .from_env_lossy(),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
-
 
     // Create a retls proxy
     let opt = Opt::from_args();
