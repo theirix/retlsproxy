@@ -1,0 +1,24 @@
+[package]
+name = "retlsproxy"
+version = "0.1.0"
+edition = "2021"
+authors = ["theirix <theirix@gmail.com>"]
+repository = "https://github.com/theirix/retlsproxy"
+license = "MIT"
+readme = "README.md"
+description = "An HTTP proxy to tweak TLS capabilities"
+categories = ["command-line-utilities"]
+keywords = ["tls", "proxy"]
+
+[dependencies]
+axum = "0.8.1"
+http = "1.2.0"
+hyper = "1.6.0"
+hyper-util = "0.1.10"
+reqwest = { version = "0.12.12", features = ["default-tls", "rustls-tls", "stream"], default-features = false }
+structopt = "0.3.26"
+tokio = { version = "1.43.0", features = ["full"] }
+tower = "0.5.2"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+url = "2.5.4"
