@@ -116,15 +116,21 @@ impl Proxy {
         // Pass the request stream directly to the target service
         let request_body_stream = req.into_body().into_data_stream();
         let request_body = reqwest::Body::wrap_stream(request_body_stream);
-        let resp = self
+        let response = self
             .client
             .request(method, target_uri.to_string())
             .body(request_body)
             .send()
-            .await;
-        let response = resp?.bytes().await?;
-        let response: Response = Response::new(response.into());
-        Ok(response)
+            .await?;
+        let response_headers = response.headers().clone();
+        let response_bytes = response.bytes().await?;
+        let mut proxy_response: Response = Response::new(response_bytes.into());
+        if let Some(header_value) = response_headers.get("Content-Type") {
+            proxy_response
+                .headers_mut()
+                .insert("Content-Type", header_value.clone());
+        }
+        Ok(proxy_response)
     }
 
     async fn retls(&self, req: Request) -> Result<Response, hyper::Error> {
