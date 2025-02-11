@@ -3,7 +3,6 @@ use url::Url;
 
 use http::uri::Authority;
 use http::Uri;
-use http::{Method, StatusCode};
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server;
@@ -107,11 +106,7 @@ impl Proxy {
             .compose_target_uri(req.uri())
             .map_err(|err| format!("Wrong target URI {} with err={}", &self.target_host, err))?;
 
-        let method = match *req.method() {
-            Method::GET => reqwest::Method::GET,
-            Method::POST => reqwest::Method::POST,
-            _ => return Err("Unsupported method".into()),
-        };
+        let method = req.method().clone();
 
         // Pass the request stream directly to the target service
         let request_body_stream = req.into_body().into_data_stream();
@@ -141,7 +136,7 @@ impl Proxy {
             Err(err) => {
                 // Serve 404 on any error
                 tracing::error!(err);
-                Ok((StatusCode::BAD_REQUEST, "Error serving request").into_response())
+                Ok((http::StatusCode::BAD_REQUEST, "Error serving request").into_response())
             }
         }
     }
