@@ -171,7 +171,8 @@ async fn main() {
 
     let listener = TcpListener::bind(opt.listen).await.unwrap();
     loop {
-        let (stream, _) = listener.accept().await.unwrap();
+        let (stream, addr) = listener.accept().await.unwrap();
+        tracing::info!("Connection from {}", addr);
         let io = TokioIo::new(stream);
         let hyper_service = hyper_service.clone();
         tokio::task::spawn(async move {
