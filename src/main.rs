@@ -1,4 +1,7 @@
 use axum::{body::Body, extract::Request, response::IntoResponse, response::Response};
+use std::fs::File;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
 use url::Url;
 
 use http::uri::Authority;
@@ -29,6 +32,10 @@ struct Opt {
     /// Trace requests
     #[structopt(long)]
     trace: bool,
+
+    /// Access log file
+    #[structopt(short, long)]
+    access_log_file: Option<String>,
 }
 
 /// Proxy to a TLS service with reduced capabilities
@@ -40,6 +47,8 @@ struct Proxy {
     target_host: String,
     /// Pre-configured client for a target service
     client: reqwest::Client,
+    /// Access log logger
+    access_log_layer: Arc<Mutex<Option<File>>>,
 }
 
 impl Proxy {
@@ -47,6 +56,7 @@ impl Proxy {
         target: String,
         user_agent: Option<String>,
         trace: bool,
+        access_log_layer: Arc<Mutex<Option<File>>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // Compose target host
         let target_host = Self::get_target_host(&target)?;
@@ -78,6 +88,7 @@ impl Proxy {
             client,
             target_authority,
             target_host,
+            access_log_layer,
         })
     }
 
@@ -108,6 +119,7 @@ impl Proxy {
 
         let method = req.method().clone();
 
+        self.log_access_log(&req)?;
         // Pass the request stream directly to the target service
         let request_body_stream = req.into_body().into_data_stream();
         let request_body = reqwest::Body::wrap_stream(request_body_stream);
@@ -128,6 +140,30 @@ impl Proxy {
         Ok(proxy_response)
     }
 
+    fn log_access_log(&self, req: &Request) -> Result<(), Box<dyn std::error::Error>> {
+        // 116.35.41.41 - - [21/May/2022:11:22:41 +0000] "GET /aboutus.html HTTP/1.1" 200 6430 "http://34.227.9.153/" "UA"
+        let mut locked = self.access_log_layer.lock().unwrap();
+
+        if locked.is_none() {
+            return Ok(());
+        }
+        let mut file: &File = locked.as_mut().unwrap();
+        let remote_addr = "127.0.0.1";
+        let time = chrono::Utc::now()
+            .format("[%d/%b/%Y:%H:%M:%S %z]")
+            .to_string();
+        let line = format!(
+            "{} - - {} \"{} {} {:?}\" 0 0\n",
+            remote_addr,
+            time,
+            req.method(),
+            req.uri(),
+            req.version(),
+        );
+        file.write_all(line.as_bytes())?;
+        Ok(())
+    }
+
     async fn retls(&self, req: Request) -> Result<Response, hyper::Error> {
         tracing::trace!(?req);
 
@@ -144,6 +180,13 @@ impl Proxy {
 
 #[tokio::main]
 async fn main() {
+    let opt = Opt::from_args();
+
+    let access_file = opt.access_log_file.map(|access_log_filename| {
+        File::create(access_log_filename).expect("Cannot write access log")
+    });
+    let access_log_rc = Arc::new(Mutex::new(access_file));
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::builder()
@@ -154,8 +197,7 @@ async fn main() {
         .init();
 
     // Create a retls proxy
-    let opt = Opt::from_args();
-    let proxy = Proxy::new(opt.target, opt.user_agent, opt.trace).unwrap();
+    let proxy = Proxy::new(opt.target, opt.user_agent, opt.trace, access_log_rc).unwrap();
 
     let tower_service = tower::service_fn(move |req: Request<_>| {
         let proxy = proxy.clone();
