@@ -1,6 +1,7 @@
 use axum::{body::Body, extract::Request, response::IntoResponse, response::Response};
 use std::fs::File;
 use std::io::Write;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use url::Url;
 
@@ -112,14 +113,18 @@ impl Proxy {
         Ok(target_uri)
     }
 
-    async fn serve_request(&self, req: Request) -> Result<Response, Box<dyn std::error::Error>> {
+    async fn serve_request(
+        &self,
+        client_addr: SocketAddr,
+        req: Request,
+    ) -> Result<Response, Box<dyn std::error::Error>> {
         let target_uri: Uri = self
             .compose_target_uri(req.uri())
             .map_err(|err| format!("Wrong target URI {} with err={}", &self.target_host, err))?;
 
         let method = req.method().clone();
 
-        self.log_access_log(&req)?;
+        self.log_access_log(&client_addr, &req)?;
         // Pass the request stream directly to the target service
         let request_body_stream = req.into_body().into_data_stream();
         let request_body = reqwest::Body::wrap_stream(request_body_stream);
@@ -140,7 +145,11 @@ impl Proxy {
         Ok(proxy_response)
     }
 
-    fn log_access_log(&self, req: &Request) -> Result<(), Box<dyn std::error::Error>> {
+    fn log_access_log(
+        &self,
+        client_addr: &SocketAddr,
+        req: &Request,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // 116.35.41.41 - - [21/May/2022:11:22:41 +0000] "GET /aboutus.html HTTP/1.1" 200 6430 "http://34.227.9.153/" "UA"
         let mut locked = self.access_log_layer.lock().unwrap();
 
@@ -148,7 +157,7 @@ impl Proxy {
             return Ok(());
         }
         let mut file: &File = locked.as_mut().unwrap();
-        let remote_addr = "127.0.0.1";
+        let remote_addr = client_addr.to_string();
         let time = chrono::Utc::now()
             .format("[%d/%b/%Y:%H:%M:%S %z]")
             .to_string();
@@ -164,10 +173,10 @@ impl Proxy {
         Ok(())
     }
 
-    async fn retls(&self, req: Request) -> Result<Response, hyper::Error> {
+    async fn retls(&self, client_addr: SocketAddr, req: Request) -> Result<Response, hyper::Error> {
         tracing::trace!(?req);
 
-        match self.serve_request(req).await {
+        match self.serve_request(client_addr, req).await {
             Ok(response) => Ok(response),
             Err(err) => {
                 // Serve 404 on any error
@@ -199,16 +208,6 @@ async fn main() {
     // Create a retls proxy
     let proxy = Proxy::new(opt.target, opt.user_agent, opt.trace, access_log_rc).unwrap();
 
-    let tower_service = tower::service_fn(move |req: Request<_>| {
-        let proxy = proxy.clone();
-        let req = req.map(Body::new);
-        async move { proxy.retls(req).await }
-    });
-
-    let hyper_service = hyper::service::service_fn(move |request: Request<Incoming>| {
-        tower_service.clone().call(request)
-    });
-
     tracing::info!("listening on {}", &opt.listen);
 
     let listener = TcpListener::bind(opt.listen).await.unwrap();
@@ -216,7 +215,18 @@ async fn main() {
         let (stream, addr) = listener.accept().await.unwrap();
         tracing::info!("Connection from {}", addr);
         let io = TokioIo::new(stream);
-        let hyper_service = hyper_service.clone();
+
+        let proxy = proxy.clone();
+        let tower_service = tower::service_fn(move |req: Request<_>| {
+            let proxy = proxy.clone();
+            let req = req.map(Body::new);
+            async move { proxy.retls(addr, req).await }
+        });
+
+        let hyper_service = hyper::service::service_fn(move |request: Request<Incoming>| {
+            tower_service.clone().call(request)
+        });
+
         tokio::task::spawn(async move {
             if let Err(err) = server::conn::auto::Builder::new(TokioExecutor::new())
                 .serve_connection_with_upgrades(io, hyper_service)

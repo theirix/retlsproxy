@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
 - Support more HTTP methods
+- Log client address in access_log
 
 ## [0.2.2] - 2025-02-10
 ### Changed
