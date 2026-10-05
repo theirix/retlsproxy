@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
 
+## [0.2.4] - 2026-09-05
+- Support custom referer header
+
 ## [0.2.3] - 2025-05-04
 - Support more HTTP methods
 - Log client address in access_log
