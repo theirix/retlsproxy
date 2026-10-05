@@ -126,7 +126,7 @@ impl Proxy {
     ) -> Result<Response, Box<dyn std::error::Error>> {
         let target_uri: Uri = self
             .compose_target_uri(req.uri())
-            .map_err(|err| format!("Wrong target URI {} with err={}", &self.target_host, err))?;
+            .map_err(|err| format!("Wrong target URI {} with err={}", self.target_host, err))?;
 
         let method = req.method().clone();
 
