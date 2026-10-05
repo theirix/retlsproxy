@@ -212,7 +212,14 @@ async fn main() {
         .init();
 
     // Create a retls proxy
-    let proxy = Proxy::new(opt.target, opt.user_agent, opt.referer, opt.trace, access_log_rc).unwrap();
+    let proxy = Proxy::new(
+        opt.target,
+        opt.user_agent,
+        opt.referer,
+        opt.trace,
+        access_log_rc,
+    )
+    .unwrap();
 
     tracing::info!("listening on {}", &opt.listen);
 
