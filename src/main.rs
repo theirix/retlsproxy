@@ -37,6 +37,10 @@ struct Opt {
     /// Access log file
     #[structopt(short, long)]
     access_log_file: Option<String>,
+
+    /// Referer
+    #[structopt(short, long)]
+    referer: Option<String>,
 }
 
 /// Proxy to a TLS service with reduced capabilities
@@ -56,6 +60,7 @@ impl Proxy {
     pub fn new(
         target: String,
         user_agent: Option<String>,
+        referer: Option<String>,
         trace: bool,
         access_log_layer: Arc<Mutex<Option<File>>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -67,7 +72,8 @@ impl Proxy {
 
         // Prepopulate headers
         let mut headers = http::HeaderMap::with_capacity(2);
-        headers.insert("Referer", target_host_tls.parse().unwrap());
+        let referer = referer.unwrap_or(target_host_tls.clone());
+        headers.insert("Referer", referer.parse().unwrap());
         headers.append("Origin", target_host_tls.parse().unwrap());
         if let Some(value) = user_agent {
             headers.append("User-Agent", value.parse().unwrap());
@@ -206,7 +212,7 @@ async fn main() {
         .init();
 
     // Create a retls proxy
-    let proxy = Proxy::new(opt.target, opt.user_agent, opt.trace, access_log_rc).unwrap();
+    let proxy = Proxy::new(opt.target, opt.user_agent, opt.referer, opt.trace, access_log_rc).unwrap();
 
     tracing::info!("listening on {}", &opt.listen);
 
